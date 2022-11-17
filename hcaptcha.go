@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"fmt"
 	"net/http"
 	"net/url"
 )
@@ -96,7 +97,7 @@ func (c *Client) Handler(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-
+		fmt.Println(r)
 		if c.FailureHandler != nil {
 			c.FailureHandler.ServeHTTP(w, r)
 		}
