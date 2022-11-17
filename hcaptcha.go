@@ -1,11 +1,11 @@
 package hcaptcha
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
-	"fmt"
+	"io/ioutil"
+	"bytes"
 	"net/http"
 	"net/url"
 )
@@ -16,8 +16,6 @@ type PostRes struct {
 }
 
 var (
-	// ResponseContextKey is the default request's context key that response of a hcaptcha request is kept.
-	ResponseContextKey interface{} = "hcaptcha"
 	// DefaultFailureHandler is the default HTTP handler that is fired on hcaptcha failures. See `Client.FailureHandler`.
 	DefaultFailureHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response, _ := json.Marshal(PostRes{
@@ -92,12 +90,11 @@ func New(secret string) *Client {
 func (c *Client) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		v := c.SiteVerify(r)
-		r = r.WithContext(context.WithValue(r.Context(), ResponseContextKey, v))
 		if v.Success {
 			next.ServeHTTP(w, r)
 			return
 		}
-		fmt.Println(r)
+
 		if c.FailureHandler != nil {
 			c.FailureHandler.ServeHTTP(w, r)
 		}
@@ -118,8 +115,12 @@ const apiURL = "https://hcaptcha.com/siteverify"
 // Any errors are passed through the `response.ErrorCodes` field.
 func (c *Client) SiteVerify(r *http.Request) (response Response) {
 	var req PostType
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&req)
+
+	bodyBytes, _ := ioutil.ReadAll(r.Body)
+	r.Body.Close()
+	r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+	
+	err := json.Unmarshal(bodyBytes, &req)
 	if err != nil {
 		response.ErrorCodes = append(response.ErrorCodes, "Failed to decode request.")
 		return
@@ -182,16 +183,4 @@ func (c *Client) VerifyToken(tkn string) (response Response) {
 	}
 
 	return
-}
-
-// Get returns the hcaptcha `Response` of the current "r" request and reports whether was found or not.
-func Get(r *http.Request) (Response, bool) {
-	v := r.Context().Value(ResponseContextKey)
-	if v != nil {
-		if response, ok := v.(Response); ok {
-			return response, true
-		}
-	}
-
-	return Response{}, false
 }
